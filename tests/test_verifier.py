@@ -6,9 +6,9 @@ import shutil
 
 import pytest
 
-from maga.schemas import Contract, Package
+from maga.schemas import Contract, Package, Verdict
 from maga.triage import GOLDEN
-from maga.verifier import PROBES, Run, check, gate1_verdict, run_suite
+from maga.verifier import PROBES, Gate, Run, check, gate1_verdict, run_suite
 
 FIXTURES = Path(__file__).parent / "fixtures" / "model_responses"
 SUITE = FIXTURES / "test_start.py.txt"
@@ -87,7 +87,8 @@ def test_a_suite_that_passes_a_probe_is_invalid_and_never_grades_the_script(
 ) -> None:
     calls, suite = _stub([PASSED], probe=PASSED)
     revisions: list[str] = []
-    verdict = check(PACKAGE, tmp_path, lambda log: revisions.append(log) or PACKAGE, suite)
+    gates: list[Gate] = [lambda package, n: gate1_verdict(package, n, suite)]
+    verdict = check(PACKAGE, tmp_path, lambda log: revisions.append(log) or PACKAGE, gates)
     assert verdict.outcome == "fail"
     assert verdict.stderr_log.startswith("suite_invalid")
     assert verdict.test_results == {"probe:noop": "NOT rejected"}
@@ -110,7 +111,8 @@ def test_rev_one_first_attempt_plus_three_revisions(
 ) -> None:
     logs: list[str] = []
     _, suite = _stub(list(runs))
-    verdict = check(PACKAGE, tmp_path, lambda log: logs.append(log) or PACKAGE, suite)
+    gates: list[Gate] = [lambda package, n: gate1_verdict(package, n, suite)]
+    verdict = check(PACKAGE, tmp_path, lambda log: logs.append(log) or PACKAGE, gates)
     assert (verdict.outcome, verdict.total_revisions, len(logs)) == (outcome, revisions, revisions)
     assert all("FAILED t.py::test_case_c" in log for log in logs)  # TT-REV-006: the failure log
     stored = (tmp_path / "verification" / f"{PACKAGE.candidate_id}_verdict.json").read_text()
@@ -121,3 +123,69 @@ def test_rev_one_first_attempt_plus_three_revisions(
 def test_an_inconclusive_probe_run_is_not_a_failure() -> None:
     _, suite = _stub([PASSED], probe=NO_CONTAINER)
     assert gate1_verdict(PACKAGE, 0, suite).outcome == "inconclusive"
+
+
+def _gates(script: list[tuple[int, str]]) -> tuple[list[int], list[Gate]]:
+    """Two stub gates that replay `script`, a list of (gate number, outcome), and record the calls."""
+    calls: list[int] = []
+
+    def gate(number: int) -> Gate:
+        def run(package: Package, total_revisions: int) -> Verdict:
+            expected, outcome = script.pop(0)
+            calls.append(number)
+            assert expected == number, (
+                f"gate {number} ran, but the script expected gate {expected}"
+            )
+            return Verdict.model_validate(
+                {
+                    "candidate_id": package.candidate_id,
+                    "gate_number": number,
+                    "outcome": outcome,
+                    "total_revisions": total_revisions,
+                    "test_results": {},
+                    "stdout_log": f"GATE{number}_LOG",
+                    "stderr_log": "",
+                    "execution_duration_ms": 1,
+                    "timestamp": "2026-01-05T10:00:06Z",
+                }
+            )
+
+        return run
+
+    return calls, [gate(1), gate(2)]
+
+
+def test_rev_002_both_gates_share_one_counter(tmp_path: Path) -> None:
+    script = [(1, "fail"), (1, "pass"), (2, "fail"), (1, "fail"), (1, "pass"), (2, "fail")]
+    calls, gates = _gates(script)
+    logs: list[str] = []
+    verdict = check(PACKAGE, tmp_path, lambda log: logs.append(log) or PACKAGE, gates)
+    assert calls == [1, 1, 2, 1, 1, 2]
+    assert (verdict.gate_number, verdict.outcome, verdict.total_revisions) == (2, "fail", 3)
+    assert len(logs) == 3  # with the first attempt, the generator ran 4 times
+    assert [log.split("_")[0] for log in logs] == ["GATE1", "GATE2", "GATE1"]
+
+
+def test_rev_003_a_revised_package_goes_through_gate_1_again(tmp_path: Path) -> None:
+    calls, gates = _gates([(1, "pass"), (2, "fail"), (1, "pass"), (2, "pass")])
+    verdict = check(PACKAGE, tmp_path, lambda _log: PACKAGE, gates)
+    assert calls == [1, 2, 1, 2]
+    assert (verdict.gate_number, verdict.outcome, verdict.total_revisions) == (2, "pass", 1)
+    stored = sorted(path.name for path in (tmp_path / "verification").iterdir())
+    assert stored == [
+        f"{PACKAGE.candidate_id}_gate1_verdict.json",
+        f"{PACKAGE.candidate_id}_gate2_verdict.json",
+        f"{PACKAGE.candidate_id}_verdict.json",
+    ]
+
+
+def test_g2r_012_an_inconclusive_gate_2_uses_no_revision(tmp_path: Path) -> None:
+    calls, gates = _gates([(1, "pass"), (2, "inconclusive")])
+    revisions: list[str] = []
+    verdict = check(PACKAGE, tmp_path, lambda log: revisions.append(log) or PACKAGE, gates)
+    assert (calls, verdict.outcome, verdict.total_revisions, revisions) == (
+        [1, 2],
+        "inconclusive",
+        0,
+        [],
+    )

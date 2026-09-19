@@ -3,7 +3,7 @@
 The suite grades the generated script only after it has failed the known-bad probes.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -132,19 +132,41 @@ def gate1_verdict(
     )
 
 
-def check(
-    package: Package,
-    state: Path,
-    revise: Callable[[str], Package],
-    suite: Callable[..., Run] = run_suite,
+Gate = Callable[[Package, int], Verdict]  # a package and total_revisions give one verdict
+
+
+def _one_pass(
+    package: Package, total_revisions: int, gates: Sequence[Gate], folder: Path
 ) -> Verdict:
-    """One first attempt plus MAX_TOTAL_REVISIONS revisions. The contract and the tests stay fixed."""
+    """Run the gates in order until one does not pass. Store each verdict."""
+    verdict = None
+    for gate in gates:
+        verdict = gate(package, total_revisions)
+        text = verdict.model_dump_json(indent=2)
+        name = f"{package.candidate_id}_gate{verdict.gate_number}_verdict.json"
+        (folder / name).write_text(text)
+        (folder / f"{package.candidate_id}_verdict.json").write_text(text)  # the latest one
+        if verdict.outcome != "pass":
+            break
+    if verdict is None:
+        message = "check needs a minimum of one gate"
+        raise ValueError(message)
+    return verdict
+
+
+def check(
+    package: Package, state: Path, revise: Callable[[str], Package], gates: Sequence[Gate]
+) -> Verdict:
+    """Run the gates in order, with one revision budget for all of them (ARCHITECTURE.md 6).
+
+    One first attempt plus MAX_TOTAL_REVISIONS revisions. A revised package starts again at the
+    first gate. The contract and the tests stay fixed.
+    """
     total_revisions = 0
+    folder = state / "verification"
+    folder.mkdir(parents=True, exist_ok=True)
     while True:
-        verdict = gate1_verdict(package, total_revisions, suite)
-        target = state / "verification" / f"{package.candidate_id}_verdict.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(verdict.model_dump_json(indent=2))
+        verdict = _one_pass(package, total_revisions, gates, folder)
         # An inconclusive run uses no revision. A weak suite is not a script defect: no revision fixes it.
         if (
             verdict.outcome != "fail"

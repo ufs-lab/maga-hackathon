@@ -26,15 +26,13 @@ def main() -> int:
     build.add_argument("candidate_id")
     check = stages.add_parser("check", help="Gate 1: acceptance tests in a container, no network")
     check.add_argument("candidate_id")
-    reuse = stages.add_parser(
-        "gate2", help="Gate 2: 5 fresh agent runs must find and use the skill"
-    )
-    reuse.add_argument("candidate_id")
-    reuse.add_argument("demo_repo", type=Path, nargs="?", default=Path("fixtures/demo-monorepo"))
+    verify = stages.add_parser("verify", help="Gate 1, then Gate 2, with one revision budget")
+    verify.add_argument("candidate_id")
+    verify.add_argument("demo_repo", type=Path, nargs="?", default=Path("fixtures/demo-monorepo"))
     args = parser.parse_args()
 
-    if args.stage == "gate2":
-        return _gate2(args.candidate_id, args.demo_repo)
+    if args.stage == "verify":
+        return _check(args.candidate_id, args.demo_repo)
 
     if args.stage == "check":
         return _check(args.candidate_id)
@@ -73,7 +71,8 @@ def _build(candidate_id: str) -> int:
     return 0
 
 
-def _check(candidate_id: str) -> int:
+def _check(candidate_id: str, demo_repo: Path | None = None) -> int:
+    """Gate 1, and with a demo repository also Gate 2, under one revision budget."""
     staged = STAGED / candidate_id
 
     def revise(gate_failure: str) -> Package:
@@ -81,8 +80,13 @@ def _check(candidate_id: str) -> int:
         contract = generator.approved_contract(STATE, candidate_id)
         return generator.write_script(contract, staged, gate_failure)
 
+    def reuse(package: Package, total_revisions: int) -> Verdict:
+        repo = demo_repo or Path()
+        return gate2.gate2_verdict(package, repo, gate2.claude_runner, total_revisions)
+
+    gates: list[verifier.Gate] = [verifier.gate1_verdict, *([reuse] if demo_repo else [])]
     try:
-        verdict = verifier.check(_package(candidate_id), STATE, revise)
+        verdict = verifier.check(_package(candidate_id), STATE, revise, gates)
     except (FileNotFoundError, PermissionError, UserError) as error:
         sys.stderr.write(f"{error}\n")
         return 1
@@ -101,24 +105,6 @@ def _package(candidate_id: str) -> Package:
         test_path=str(staged / "tests" / "test_start.py"),
         contract=generator.approved_contract(STATE, candidate_id),
     )
-
-
-def _gate2(candidate_id: str, demo_repo: Path) -> int:
-    gate1 = STATE / "verification" / f"{candidate_id}_verdict.json"
-    if not gate1.exists() or Verdict.model_validate_json(gate1.read_bytes()).outcome != "pass":
-        sys.stderr.write(
-            f"Gate 2 needs a Gate 1 pass in {gate1}; run `python -m maga check` first\n"
-        )
-        return 1
-    try:
-        verdict = gate2.gate2_verdict(_package(candidate_id), demo_repo, gate2.claude_runner, 0)
-    except (FileNotFoundError, PermissionError) as error:
-        sys.stderr.write(f"{error}\n")
-        return 1
-    target = STATE / "verification" / f"{candidate_id}_gate2_verdict.json"
-    target.write_text(verdict.model_dump_json(indent=2))
-    sys.stdout.write(verdict.model_dump_json(indent=2) + "\n")
-    return 0 if verdict.outcome == "pass" else 1
 
 
 def _decide(candidate_id: str) -> int:
