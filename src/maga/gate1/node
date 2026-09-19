@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""A stand-in for `node`: it answers the version check of a precondition, and runs nothing."""
+import sys
+
+if sys.argv[1:2] in (["--version"], ["-v"]):
+    print("v20.11.0")

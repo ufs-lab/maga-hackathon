@@ -307,3 +307,13 @@ def test_chk_006_the_evidence_that_goes_to_the_model_does_not_grow_with_the_sess
     assert len(candidate.evidence.common_pitfalls) == 10
     assert [len(messages) for messages in asked] == [10]
     assert len(candidate.model_dump_json()) < 5000
+
+
+def test_the_demo_sessions_give_a_correction_first_and_the_vite_sequence() -> None:
+    demo = sorted((P1_DIR.parent / "demo").glob("*.jsonl"))
+    found = find([parse_session(path)[0] for path in demo])
+    assert len(demo) == 4
+    assert [c.evidence_type for c in found][:2] == ["correction", "repetition"]
+    assert found[0].frequency == 4
+    assert all(message.startswith("no, ") for message in found[0].evidence.common_pitfalls)
+    assert any("vite --port $PORT_LIST --strictPort" in c.normalized_template for c in found)

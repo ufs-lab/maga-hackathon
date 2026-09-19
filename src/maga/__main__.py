@@ -42,6 +42,9 @@ def main() -> int:
         "auto", help="read, find, then build and install with no question"
     )
     unattended.add_argument("repo", type=Path, nargs="?", default=Path())
+    unattended.add_argument(
+        "paths", nargs="*", type=Path, help="session files; default: ~/.claude/projects/*/*.jsonl"
+    )
     run = stages.add_parser("run", help="READ through both CHECK gates, with human approval")
     run.add_argument("paths", nargs="*", type=Path, help="default: ~/.claude/projects/*/*.jsonl")
     run.add_argument("--candidate-id", help="default: highest-ranked candidate from FIND")
@@ -54,7 +57,7 @@ def main() -> int:
 
     stage: str = args.stage
     dispatch: dict[str, Callable[[], int]] = {
-        "auto": lambda: _auto_stage(args.repo),
+        "auto": lambda: _auto_stage(args.repo, args.paths),
         "run": lambda: _run_stage(args.paths, args.candidate_id, args.demo_repo),
         "read": lambda: _read(args.paths),
         "find": _find,
@@ -67,8 +70,8 @@ def main() -> int:
     return dispatch[stage]()
 
 
-def _auto_stage(repo: Path) -> int:
-    _read([])
+def _auto_stage(repo: Path, paths: list[Path]) -> int:
+    _read(paths)
     _find()
     installed = auto.Auto(STATE, STAGED, repo, [verifier.gate1_verdict]).run()
     sys.stdout.write(f"{len(installed)} skills installed below {repo / '.claude/skills'}\n")

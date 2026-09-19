@@ -24,6 +24,8 @@ Repository constraints:
 - The working directory is the repository root. `packages/config/ports.json` holds
   {"frontend_ports": [...]}. The frontend is in `apps/web`. `vite` is on PATH; start it in
   `apps/web` as `vite --port <port> --strictPort`.
+- `node`, `pnpm`, and `vite` are on PATH where the tests run. Check a tool that the contract
+  names as a precondition with `shutil.which`; never install a package and never use the network.
 - The last line of stdout is one JSON object. Error reasons: all_permitted_ports_exhausted,
   cors_origin_rejected, precondition_failed.
 Test harness (pytest fixtures that Gate 1 provides; a test must not define them):
@@ -35,6 +37,8 @@ Test harness (pytest fixtures that Gate 1 provides; a test must not define them)
 - Each test gets a fresh `repo`, and the harness stops the process in the PID tracking file
   after each test. Ports 5173 and 5174 are free at the start of each test.
 - `occupy(port)`: binds the port with an unrelated listener and returns its socket.
+- `repo` is a plain `pathlib.Path`. `run`, `backend`, and `occupy` are separate fixtures: request
+  each one as a test argument and call `run()`. Never write `repo.run()` or `repo.path`.
 - `run(*args)`: runs the script under test in `repo` and returns subprocess.CompletedProcess
   with text stdout and stderr. Never import the script and never read its source.
 """
