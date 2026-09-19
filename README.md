@@ -1,3 +1,5 @@
+[Click here for the one-page demo presentation](https://your-team-already-solved-this.ledger-rocket.here.now/) (ledgerrocket.com sign-in required).
+
 # MAGA
 
 Coding agents repeatedly pay to rediscover the same project-specific fixes. Our background agent finds those repeated corrections in session transcripts, checks the evidence, and turns them into tested scripts and skills, and proposes them for human review.

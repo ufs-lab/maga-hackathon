@@ -35,7 +35,10 @@ class Auto:
         ranked = finder.rank(Candidate.model_validate_json(path.read_bytes()) for path in files)
         tools = triage.existing_tools(self.repo, Path.home())
         installed: list[Path] = []
-        for candidate in [c for c in ranked if c.triage_status == "pending"][:TOP]:
+        # The approval record marks a decided candidate. FIND rewrites each candidate file as
+        # `pending` on every run, so `triage_status` cannot carry that fact.
+        decided = {path.stem for path in (self.state / "approvals").glob("*.json")}
+        for candidate in [c for c in ranked if c.candidate_id not in decided][:TOP]:
             try:
                 skill = self._one(candidate, tools)
             except (AgentRunError, ValueError) as error:  # one bad answer must not stop the run
