@@ -4,9 +4,13 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
 
 import logfire
 from pydantic_ai.exceptions import AgentRunError, UserError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from maga import auto, finder, gate2, generator, llm, publisher, reader, triage, verifier
 from maga.schemas import Candidate, Package, Verdict
@@ -49,31 +53,36 @@ def main() -> int:
     logfire.configure(send_to_logfire="if-token-present", service_name="maga", console=False)
 
     stage: str = args.stage
-    if stage == "auto":
-        _read([])
-        _find()
-        installed = auto.Auto(STATE, STAGED, args.repo, [verifier.gate1_verdict]).run()
-        sys.stdout.write(
-            f"{len(installed)} skills installed below {args.repo / '.claude/skills'}\n"
-        )
-        return 0
-    if stage == "run":
-        try:
-            code = _run(args.paths, args.candidate_id, args.demo_repo)
-        except (OSError, ValueError, EOFError, AgentRunError, UserError) as error:
-            sys.stderr.write(f"Pipeline stopped: {type(error).__name__}: {error}\n")
-            code = 1
-        sys.stdout.write(f"State: {STATE.resolve()}\nArtifacts: {STAGED.resolve()}\n")
-        return code
-    if stage == "read":
-        return _read(args.paths)
-    if stage == "find":
-        return _find()
-    if stage in {"verify", "propose"}:
-        return {"verify": _check, "propose": _propose}[stage](args.candidate_id, args.demo_repo)
-    if stage == "decide":
-        return _decide(args.candidate_id, args.repo)
-    return {"build": _build, "check": _check}[stage](args.candidate_id)
+    dispatch: dict[str, Callable[[], int]] = {
+        "auto": lambda: _auto_stage(args.repo),
+        "run": lambda: _run_stage(args.paths, args.candidate_id, args.demo_repo),
+        "read": lambda: _read(args.paths),
+        "find": _find,
+        "verify": lambda: _check(args.candidate_id, args.demo_repo),
+        "propose": lambda: _propose(args.candidate_id, args.demo_repo),
+        "decide": lambda: _decide(args.candidate_id, args.repo),
+        "build": lambda: _build(args.candidate_id),
+        "check": lambda: _check(args.candidate_id),
+    }
+    return dispatch[stage]()
+
+
+def _auto_stage(repo: Path) -> int:
+    _read([])
+    _find()
+    installed = auto.Auto(STATE, STAGED, repo, [verifier.gate1_verdict]).run()
+    sys.stdout.write(f"{len(installed)} skills installed below {repo / '.claude/skills'}\n")
+    return 0
+
+
+def _run_stage(paths: list[Path], candidate_id: str | None, demo_repo: Path) -> int:
+    try:
+        code = _run(paths, candidate_id, demo_repo)
+    except (OSError, ValueError, EOFError, AgentRunError, UserError) as error:
+        sys.stderr.write(f"Pipeline stopped: {type(error).__name__}: {error}\n")
+        code = 1
+    sys.stdout.write(f"State: {STATE.resolve()}\nArtifacts: {STAGED.resolve()}\n")
+    return code
 
 
 def _read(paths: list[Path]) -> int:
@@ -116,12 +125,16 @@ def _run(paths: list[Path], candidate_id: str | None, demo_repo: Path) -> int:
         return 2
     sys.stdout.write(f"Selected candidate: {candidate_id}\n")
     sys.stdout.write(f"Artifacts (if built): {(STAGED / candidate_id).resolve()}\n")
-    for stage, action in (("DECIDE", _decide), ("BUILD", _build)):
-        sys.stdout.write(f"{stage}\n")
-        code = action(candidate_id)
-        if code:
-            sys.stdout.write(f"Pipeline stopped at {stage}\n")
-            return code
+    sys.stdout.write("DECIDE\n")
+    code = _decide(candidate_id, Path())
+    if code:
+        sys.stdout.write("Pipeline stopped at DECIDE\n")
+        return code
+    sys.stdout.write("BUILD\n")
+    code = _build(candidate_id)
+    if code:
+        sys.stdout.write("Pipeline stopped at BUILD\n")
+        return code
     code = _check(candidate_id, demo_repo)
     sys.stdout.write("Pipeline passed\n" if code == 0 else "Pipeline stopped at CHECK\n")
     return code
