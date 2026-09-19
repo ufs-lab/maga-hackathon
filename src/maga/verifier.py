@@ -22,6 +22,8 @@ IMAGE = "maga-gate1"
 _DOCKERFILE = "FROM python:3.13-slim\nRUN pip install --no-cache-dir pytest==9.1.1\n"
 _TIMEOUT_SECONDS = 120
 _HARNESS = Path(__file__).parent / "gate1"
+# ponytail: found from the source checkout. Ship it as package data if maga is ever installed.
+_DEMO_REPO = Path(__file__).parents[2] / "fixtures" / "demo-monorepo"
 # The suite must fail each of these before its verdict on the generated script counts.
 # ponytail: the probes are the Vite script with defects, so they fit the golden contract
 # only. A second workflow needs its own probe script.
@@ -65,6 +67,7 @@ def run_suite(script: Path, tests: Path, variant: str = "") -> Run:
         # The checks live outside the staged workspace, and the container mounts them read-only.
         suite = Path(temp) / "suite"
         shutil.copytree(_HARNESS, suite, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(_DEMO_REPO, suite / "demo-monorepo")  # the `repo` fixture copies it
         shutil.copy(tests, suite / "test_start.py")
         shutil.copy(script, Path(temp) / "start.py")
         return _docker(

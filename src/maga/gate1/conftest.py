@@ -4,9 +4,9 @@ from collections.abc import Callable, Iterator
 import contextlib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
@@ -49,13 +49,10 @@ class _Health(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    (tmp_path / "packages/config").mkdir(parents=True)
-    (tmp_path / "packages/config/ports.json").write_text(json.dumps({"frontend_ports": PERMITTED}))
-    (tmp_path / "apps/web").mkdir(parents=True)
-    (tmp_path / "apps/api/src").mkdir(parents=True)
-    origins = [f"http://localhost:{port}" for port in PERMITTED]
-    (tmp_path / "apps/api/src/server.js").write_text(f"const allowed = {json.dumps(origins)};\n")
-    return tmp_path
+    """A fresh copy of the demo repository. The verifier puts it next to this file."""
+    # A bare folder here once made each generated script report `precondition_failed`: the
+    # contract requires `apps/web/package.json`, and only the real fixture has it.
+    return Path(shutil.copytree(HARNESS / "demo-monorepo", tmp_path / "repo"))
 
 
 @pytest.fixture
