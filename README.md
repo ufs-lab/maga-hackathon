@@ -15,7 +15,7 @@ python -m maga find                   # FIND: rank repeated procedures, no model
 python -m maga decide <candidate_id>  # DECIDE: one Gemini call, then a person answers y/N on the contract
 python -m maga build <candidate_id>   # BUILD: call A writes the tests, call B writes the script and skill
 python -m maga check <candidate_id>   # CHECK, Gate 1: the tests in Docker with --network none
-python -m maga gate2 <candidate_id>   # CHECK, Gate 2: 5 fresh `claude -p` runs must find and use the skill
+python -m maga verify <candidate_id>  # CHECK, both gates, one budget: Gate 2 is 5 fresh `claude -p` runs
 ```
 
 Each command exits 0 on a pass, 1 on a fail, and 2 on a usage error.
@@ -42,7 +42,7 @@ To try it with no private data, read the three synthetic sessions:
 | DECIDE | `maga.triage` | Built. Verified against the real Gemini API. |
 | BUILD | `maga.generator` | Built. Verified against the real Gemini API. |
 | CHECK Gate 1 | `maga.verifier` | Built. Runs in CI on a clean machine. |
-| CHECK Gate 2 | `maga.gate2` | Built as a host run. The credential-free container of `ARCHITECTURE.md` 9.2 is not built. |
+| CHECK Gate 2 | `maga.gate2` | Built as a host run, under one revision budget with Gate 1. The credential-free container of `ARCHITECTURE.md` 9.2 is not built. |
 | PROPOSE | `maga.publisher` | Not built. |
 
 Not built: chunking of long sessions, import checkpoints, the Pydantic AI Gateway route, Logfire traces, the Modal stretch, and the worktree scenario.
