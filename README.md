@@ -15,7 +15,8 @@ python -m maga find                   # FIND: rank repeated procedures, no model
 python -m maga decide <candidate_id>  # DECIDE: one Gemini call, then a person answers y/N on the contract
 python -m maga build <candidate_id>   # BUILD: call A writes the tests, call B writes the script and skill
 python -m maga check <candidate_id>   # CHECK, Gate 1: the tests in Docker with --network none
-python -m maga gate2 <candidate_id>   # CHECK, Gate 2: 5 fresh `claude -p` runs must find and use the skill
+python -m maga verify <candidate_id>  # CHECK, both gates, one budget: Gate 2 is 5 fresh `claude -p` runs
+python -m maga propose <candidate_id> # PROPOSE: a person approves the exact package, then a PR is opened and read back
 ```
 
 Or run all of it with no question. Skills that pass Gate 1 appear below `<repo>/.claude/skills/`:
@@ -44,15 +45,18 @@ To try it with no private data, read the three synthetic sessions:
 
 | Stage | Module | State |
 | :--- | :--- | :--- |
-| READ | `maga.reader` | Built. Imports `user` and `assistant` lines, joins calls to results, counts malformed lines. |
-| FIND | `maga.finder` | Built. The correction classifier is a keyword test, not yet a Gemini call. |
+| READ | `maga.reader` | Built. Imports `user` and `assistant` lines and the messages that a person types mid-turn, joins calls to results, counts malformed lines, and skips unchanged files through import checkpoints. |
+| FIND | `maga.finder` | Built. Sequence counting uses no model. Gemini judges a correction before its promotion. On real data no correction reaches 3 sessions, because the key is the exact command before the message. |
 | DECIDE | `maga.triage` | Built. Verified against the real Gemini API. |
 | BUILD | `maga.generator` | Built. Verified against the real Gemini API. |
 | CHECK Gate 1 | `maga.verifier` | Built. Runs in CI on a clean machine. |
-| CHECK Gate 2 | `maga.gate2` | Built as a host run. The credential-free container of `ARCHITECTURE.md` 9.2 is not built. |
-| PROPOSE | `maga.publisher` | Not built. |
+| CHECK Gate 2 | `maga.gate2` | Built as a host run, under one revision budget with Gate 1. Verified with 5 of 5 real agent runs. The credential-free container of `ARCHITECTURE.md` 9.2 is not built. |
+| PROPOSE | `maga.publisher` | Built and tested against a local Git remote. Not verified: a real pull request through `gh`. |
+| Unattended | `maga.auto` | Built. No approval question: only a package that passes Gate 1 is installed, and the record says `approved_by: automatic`. |
 
-Not built: chunking of long sessions, import checkpoints, the Pydantic AI Gateway route, Logfire traces, the Modal stretch, and the worktree scenario.
+Logfire traces each Gemini call when `LOGFIRE_TOKEN` is set. Not verified: a trace in a real Logfire project.
+
+Not built: chunking of long sessions with a model route for procedures that exact matching misses, the Pydantic AI Gateway route, the Modal stretch, the Gate 2 sandbox, and the worktree scenario.
 
 ## Development
 
