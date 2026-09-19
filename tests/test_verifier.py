@@ -191,3 +191,28 @@ def test_g2r_012_an_inconclusive_gate_2_uses_no_revision(tmp_path: Path) -> None
         0,
         [],
     )
+
+
+@needs_docker
+def test_the_harness_provides_the_tools_that_a_contract_names_as_preconditions(
+    tmp_path: Path,
+) -> None:
+    script = tmp_path / "start.py"
+    script.write_text(
+        "import shutil, subprocess, sys\n"
+        "assert shutil.which('node') and shutil.which('pnpm') and shutil.which('vite')\n"
+        "version = subprocess.run(['node', '--version'], capture_output=True, text=True).stdout\n"
+        "assert version.startswith('v'), version\n"
+        "install = subprocess.run(['pnpm', '--dir', 'apps/web', 'install'], check=False)\n"
+        "via = subprocess.run(['pnpm', '--dir', 'apps/web', 'exec', 'node', '--version'],\n"
+        "                     capture_output=True, text=True)\n"
+        "sys.exit(0 if install.returncode == 0 and via.stdout.startswith('v') else 1)\n"
+    )
+    suite = tmp_path / "test_tools.py"
+    suite.write_text(
+        "import shutil\n\n\ndef test_tools(run):\n"
+        "    assert shutil.which('node') and shutil.which('pnpm')  # in the test process too\n"
+        "    done = run()\n    assert done.returncode == 0, done.stderr\n"
+    )
+    code, out, err = run_suite(script, suite)
+    assert code == 0, out + err

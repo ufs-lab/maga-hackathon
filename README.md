@@ -51,6 +51,15 @@ After verification, `uv run --locked python -m maga propose CANDIDATE_ID` asks f
 
 The interactive commands exit 0 on success, 1 on failure, and 2 on a usage error. `read` returns 1 when it imports no files; `find` returns 1 when it finds no candidates.
 
+To see it with no private data, give it the four contrived demo sessions. A Vite skill appears in the demo repository:
+
+```bash
+python -m maga auto fixtures/demo-monorepo tests/fixtures/claude_code/demo/*.jsonl
+ls fixtures/demo-monorepo/.claude/skills/
+```
+
+All state is JSON under `.maga/`, which Git ignores. No transcript text enters this repository.
+
 For unattended operation, `uv run --locked python -m maga auto` imports local transcripts, finds candidates, and processes the top five pending candidates without asking for approval. It needs the Google key and Docker. Skills that pass Gate 1 are installed below `.claude/skills/` in the current directory; an optional `repo` argument selects the destination. This CLI path does not run Gate 2 or publish a PR. Read its per-candidate results: an exit code of 0 can include failed candidates or zero installed skills.
 
 ## Run end to end with contract approval
