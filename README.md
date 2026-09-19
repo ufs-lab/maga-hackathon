@@ -39,6 +39,25 @@ All state is JSON under `.maga/`, which Git ignores. No transcript text enters t
 To try it with no private data, read the three synthetic sessions:
 `python -m maga read tests/fixtures/claude_code/p1/*.jsonl && python -m maga find`.
 
+## Run end to end with contract approval
+
+After `uv sync --locked`, configure `GOOGLE_API_KEY` in the ignored `.env`, start Docker,
+and authenticate the `claude` CLI. Gate 2 executes generated code on the developer host,
+not in a security sandbox. Use a disposable environment for this run.
+
+```bash
+uv run --locked python -m maga run tests/fixtures/claude_code/p1/*.jsonl
+```
+
+`run` imports the inputs, mines the stored entries, prints the highest-ranked candidate ID,
+and asks you to approve its contract and acceptance checks before BUILD.
+Omit the paths to use the same transcript discovery as `read`.
+Use `--candidate-id <candidate_id>` to select another candidate from that FIND result;
+use `--demo-repo <path>` to change the Gate 2 fixture from `fixtures/demo-monorepo`.
+Both CHECK gates share the existing three-revision budget. Rejection, a failed stage,
+or an inconclusive gate stops the run with a nonzero exit. The command prints state and
+artifact locations, and never installs or publishes the package.
+
 ## What each control does
 
 - **Redaction before every model call.** `maga.reader.redact` runs when an entry is stored and again in `maga.llm.ask`. Pattern redaction is incomplete protection.
@@ -53,15 +72,15 @@ To try it with no private data, read the three synthetic sessions:
 
 | Stage | Module | State |
 | :--- | :--- | :--- |
-| READ | `maga.reader` | Built. Imports `user` and `assistant` lines, joins calls to results, counts malformed lines. |
-| FIND | `maga.finder` | Built. The correction classifier is a keyword test, not yet a Gemini call. |
+| READ | `maga.reader` | Built. Imports `user` and `assistant` lines, joins calls to results, counts malformed lines, tracks import checkpoints. |
+| FIND | `maga.finder` | Built. The correction classifier is a Gemini call (`maga.llm.ask`), not a keyword test. |
 | DECIDE | `maga.triage` | Built. Verified against the real Gemini API. |
 | BUILD | `maga.generator` | Built. Verified against the real Gemini API. |
 | CHECK Gate 1 | `maga.verifier` | Built. Runs in CI on a clean machine. |
 | CHECK Gate 2 | `maga.gate2` | Built as a host run. The credential-free container of `ARCHITECTURE.md` 9.2 is not built. |
-| PROPOSE | `maga.publisher` | Not built. |
+| PROPOSE | `maga.publisher` | Built. Verified against a real Git repository and a local bare remote. |
 
-Not built: chunking of long sessions, import checkpoints, the Pydantic AI Gateway route, Logfire traces, the Modal stretch, and the worktree scenario.
+Not built: chunking of long sessions, the Pydantic AI Gateway route, the Modal stretch, and the worktree scenario.
 
 ## Development
 
