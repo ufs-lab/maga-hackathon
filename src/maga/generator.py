@@ -24,6 +24,8 @@ Repository constraints:
 - The working directory is the repository root. `packages/config/ports.json` holds
   {"frontend_ports": [...]}. The frontend is in `apps/web`. `vite` is on PATH; start it in
   `apps/web` as `vite --port <port> --strictPort`.
+- `node`, `pnpm`, and `vite` are on PATH where the tests run. Check a tool that the contract
+  names as a precondition with `shutil.which`; never install a package and never use the network.
 - The last line of stdout is one JSON object. Error reasons: all_permitted_ports_exhausted,
   cors_origin_rejected, precondition_failed.
 Test harness (pytest fixtures that Gate 1 provides; a test must not define them):
