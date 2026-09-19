@@ -37,6 +37,9 @@ def main() -> int:
         "auto", help="read, find, then build and install with no question"
     )
     unattended.add_argument("repo", type=Path, nargs="?", default=Path())
+    unattended.add_argument(
+        "paths", nargs="*", type=Path, help="session files; default: ~/.claude/projects/*/*.jsonl"
+    )
     args = parser.parse_args()
 
     llm.load_env()
@@ -45,7 +48,7 @@ def main() -> int:
 
     stage: str = args.stage
     if stage == "auto":
-        _read([])
+        _read(args.paths)
         _find()
         installed = auto.Auto(STATE, STAGED, args.repo, [verifier.gate1_verdict]).run()
         sys.stdout.write(

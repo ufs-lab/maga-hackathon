@@ -26,6 +26,13 @@ Or run all of it with no question. Skills that pass Gate 1 appear below `<repo>/
 python -m maga auto [repo]            # READ, FIND, then DECIDE, BUILD, Gate 1, and install for the top 5 candidates
 ```
 
+To see it with no private data, give it the four contrived demo sessions. A Vite skill appears in the demo repository:
+
+```bash
+python -m maga auto fixtures/demo-monorepo tests/fixtures/claude_code/demo/*.jsonl
+ls fixtures/demo-monorepo/.claude/skills/
+```
+
 Each command exits 0 on a pass, 1 on a fail, and 2 on a usage error.
 All state is JSON under `.maga/`, which Git ignores. No transcript text enters this repository.
 
