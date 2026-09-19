@@ -52,6 +52,7 @@ def repo(tmp_path: Path) -> Path:
     (tmp_path / "packages/config").mkdir(parents=True)
     (tmp_path / "packages/config/ports.json").write_text(json.dumps({"frontend_ports": PERMITTED}))
     (tmp_path / "apps/web").mkdir(parents=True)
+    (tmp_path / "apps/web/package.json").write_text("{}")
     (tmp_path / "apps/api/src").mkdir(parents=True)
     origins = [f"http://localhost:{port}" for port in PERMITTED]
     (tmp_path / "apps/api/src/server.js").write_text(f"const allowed = {json.dumps(origins)};\n")

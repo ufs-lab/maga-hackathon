@@ -124,3 +124,15 @@ def test_a_rejected_candidate_costs_one_model_call_and_builds_nothing(tmp_path: 
     assert not (tmp_path / "staged").exists()
     approval = json.loads((state / "approvals" / f"{candidate_id}.json").read_text())
     assert (approval["approved"], approval["approved_by"]) == (False, "automatic")
+
+
+def test_a_decided_candidate_stays_decided_when_find_runs_again(tmp_path: Path) -> None:
+    state, candidate_id = _state(tmp_path)
+    calls: list[str] = []
+    lines: list[str] = []
+    model = _model("rejected", candidate_id, calls)
+    Auto(state, tmp_path / "staged", tmp_path / "repo", _gate("pass"), model, lines.append).run()
+    _state_again = find([parse_session(path)[0] for path in P1])[0]  # FIND writes it as pending
+    (state / "candidates" / f"{candidate_id}.json").write_text(_state_again.model_dump_json())
+    Auto(state, tmp_path / "staged", tmp_path / "repo", _gate("pass"), model, lines.append).run()
+    assert calls == ["outcome"]  # one model call in total, not one for each run

@@ -5,9 +5,28 @@ import sys
 
 import pytest
 
+from maga import triage
 from maga.__main__ import main
+from maga.schemas import Candidate
+from maga.triage import Decision
 
 P1 = sorted((Path(__file__).parent / "fixtures" / "claude_code" / "p1").glob("*.jsonl"))
+CANDIDATE = Candidate.model_validate(
+    {
+        "candidate_id": "cand_repetition_x",
+        "title": "uv sync --group tests",
+        "command_sequence": ["uv sync --group tests"],
+        "normalized_template": "uv sync --group tests",
+        "frequency": 3,
+        "evidence_type": "repetition",
+        "evidence": {
+            "session_ids": ["sess-a", "sess-b", "sess-c"],
+            "observed_occurrences": 3,
+            "observed_turns_mean": 1.0,
+            "observed_tokens_mean": 0,
+        },
+    }
+)
 
 
 def _maga(monkeypatch: pytest.MonkeyPatch, *args: str) -> int:
@@ -41,6 +60,36 @@ def test_decide_with_no_candidate_is_a_usage_error(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     assert _maga(monkeypatch, "decide", "cand_missing") == 2
+
+
+def test_decide_checks_the_given_repo_not_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A justfile in cwd must not leak into a decision about a different target repo."""
+    here, target = tmp_path / "here", tmp_path / "target"
+    here.mkdir()
+    target.mkdir()
+    (here / "justfile").write_text("test:\n\techo hi\n")
+    candidates = here / ".maga/state/candidates"
+    candidates.mkdir(parents=True)
+    (candidates / f"{CANDIDATE.candidate_id}.json").write_text(CANDIDATE.model_dump_json())
+    monkeypatch.chdir(here)
+
+    seen: list[Path] = []
+
+    def _existing_tools(repo: Path, _home: Path) -> list[str]:
+        seen.append(repo)
+        return []
+
+    def _decide(_candidate: Candidate, _tools: list[str]) -> Decision:
+        return Decision(outcome="rejected", reason="test")
+
+    monkeypatch.setattr(triage, "existing_tools", _existing_tools)
+    monkeypatch.setattr(triage, "decide", _decide)
+
+    assert _maga(monkeypatch, "decide", CANDIDATE.candidate_id, str(target)) == 1
+    assert seen == [target]
+    assert f"target repository: {target.resolve()}" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("args", [[], ["publish"], ["check"]])

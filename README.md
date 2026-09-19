@@ -1,3 +1,5 @@
+[Click here for the one-page demo presentation](https://your-team-already-solved-this.ledger-rocket.here.now/) (ledgerrocket.com sign-in required).
+
 # MAGA
 
 Coding agents repeatedly pay to rediscover the same project-specific fixes. Our background agent finds those repeated corrections in session transcripts, checks the evidence, and turns them into tested scripts and skills, and proposes them for human review.
@@ -50,6 +52,25 @@ After verification, `uv run --locked python -m maga propose CANDIDATE_ID` asks f
 The interactive commands exit 0 on success, 1 on failure, and 2 on a usage error. `read` returns 1 when it imports no files; `find` returns 1 when it finds no candidates.
 
 For unattended operation, `uv run --locked python -m maga auto` imports local transcripts, finds candidates, and processes the top five pending candidates without asking for approval. It needs the Google key and Docker. Skills that pass Gate 1 are installed below `.claude/skills/` in the current directory; an optional `repo` argument selects the destination. This CLI path does not run Gate 2 or publish a PR. Read its per-candidate results: an exit code of 0 can include failed candidates or zero installed skills.
+
+## Run end to end with contract approval
+
+After `uv sync --locked`, configure `GOOGLE_API_KEY` in the ignored `.env`, start Docker,
+and authenticate the `claude` CLI. Gate 2 executes generated code on the developer host,
+not in a security sandbox. Use a disposable environment for this run.
+
+```bash
+uv run --locked python -m maga run tests/fixtures/claude_code/p1/*.jsonl
+```
+
+`run` imports the inputs, mines the stored entries, prints the highest-ranked candidate ID,
+and asks you to approve its contract and acceptance checks before BUILD.
+Omit the paths to use the same transcript discovery as `read`.
+Use `--candidate-id <candidate_id>` to select another candidate from that FIND result;
+use `--demo-repo <path>` to change the Gate 2 fixture from `fixtures/demo-monorepo`.
+Both CHECK gates share the existing three-revision budget. Rejection, a failed stage,
+or an inconclusive gate stops the run with a nonzero exit. The command prints state and
+artifact locations, and never installs or publishes the package.
 
 ## What each control does
 
