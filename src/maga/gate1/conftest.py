@@ -19,6 +19,9 @@ import pytest
 
 PERMITTED = [5173, 5174]
 HARNESS = Path(__file__).parent
+# The stand-ins for `node`, `pnpm`, and `vite` are on PATH for the tests and for the script. A
+# generated test may check a precondition itself with `shutil.which`.
+os.environ["PATH"] = f"{HARNESS}{os.pathsep}{os.environ['PATH']}"
 _EXIT_WAIT_SECONDS = 5
 
 

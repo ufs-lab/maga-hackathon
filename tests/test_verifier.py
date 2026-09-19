@@ -210,7 +210,9 @@ def test_the_harness_provides_the_tools_that_a_contract_names_as_preconditions(
     )
     suite = tmp_path / "test_tools.py"
     suite.write_text(
-        "def test_tools(run):\n    done = run()\n    assert done.returncode == 0, done.stderr\n"
+        "import shutil\n\n\ndef test_tools(run):\n"
+        "    assert shutil.which('node') and shutil.which('pnpm')  # in the test process too\n"
+        "    done = run()\n    assert done.returncode == 0, done.stderr\n"
     )
     code, out, err = run_suite(script, suite)
     assert code == 0, out + err
