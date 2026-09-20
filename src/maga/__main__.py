@@ -12,7 +12,7 @@ from pydantic_ai.exceptions import AgentRunError, UserError
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from maga import auto, finder, gate2, generator, llm, publisher, reader, triage, verifier
+from maga import auto, episodes, finder, gate2, generator, llm, publisher, reader, triage, verifier
 from maga.schemas import Candidate, Package, Verdict
 
 STATE = Path(".maga/state")
@@ -42,6 +42,10 @@ def main() -> int:
         "auto", help="read, find, then build and install with no question"
     )
     unattended.add_argument("repo", type=Path, nargs="?", default=Path())
+    model_route = stages.add_parser(
+        "episodes", help="FIND with the model: Gemini names the procedures in the given sessions"
+    )
+    model_route.add_argument("paths", nargs="+", type=Path, help="session files to read")
     unattended.add_argument(
         "paths", nargs="*", type=Path, help="session files; default: ~/.claude/projects/*/*.jsonl"
     )
@@ -58,6 +62,7 @@ def main() -> int:
     stage: str = args.stage
     dispatch: dict[str, Callable[[], int]] = {
         "auto": lambda: _auto_stage(args.repo, args.paths),
+        "episodes": lambda: _episodes(args.paths),
         "run": lambda: _run_stage(args.paths, args.candidate_id, args.demo_repo),
         "read": lambda: _read(args.paths),
         "find": _find,
@@ -68,6 +73,19 @@ def main() -> int:
         "check": lambda: _check(args.candidate_id),
     }
     return dispatch[stage]()
+
+
+def _episodes(paths: list[Path]) -> int:
+    _read(paths)
+    sessions = [reader.parse_session(path)[0] for path in paths]
+    candidates = episodes.run(STATE, sessions)
+    for c in candidates:
+        sys.stdout.write(f"{c.frequency} sessions  {c.title}\n")
+        sys.stdout.write(
+            "".join(f"      {line[:150]}\n" for line in c.normalized_template.splitlines())
+        )
+    sys.stdout.write(f"{len(candidates)} episode candidates in {STATE / 'candidates'}\n")
+    return 0 if candidates else 1
 
 
 def _auto_stage(repo: Path, paths: list[Path]) -> int:
