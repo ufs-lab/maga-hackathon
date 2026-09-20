@@ -136,6 +136,43 @@ def test_steps_split_a_compound_line_and_drop_the_output_handling() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        (  # a polling loop is one procedure, not the fragments `fi`, `done`, `n=$m`
+            (
+                "n=0; while true; do m=$(wc -l < log); if [ $m -gt $n ]; then n=$m; fi; "
+                "grep -q '^chain exit' log && break; sleep 5; done; git status --short"
+            ),
+            [
+                (
+                    "while true; do m=$(wc -l < log); if [ $m -gt $n ]; then n=$m; fi; "
+                    "grep -q '^chain exit' log && break; sleep 5; done"
+                ),
+                "git status --short",
+            ],
+        ),
+        (  # an operator inside quotes does not split the step
+            "python3 -c \"import json, sys; print(1)\"; awk '{print $1; print $2}' f",
+            ['python3 -c "import json, sys; print(1)"', "awk '{print $1; print $2}' f"],
+        ),
+        (  # three runner forms of the same Vite launch give one step
+            (
+                "pnpm exec vite --port 5173 --strictPort; node node_modules/vite/bin/vite.js "
+                "--port 5174 --strictPort; ./node_modules/.bin/vite --port 5173 --strictPort"
+            ),
+            ["vite --port $PORT_LIST --strictPort"] * 3,
+        ),
+        (  # a bare assignment, `export`, and a stray block keyword are not steps
+            "export FOO=bar; X=1; then break; fi; done; git fetch -q origin main",
+            ["git fetch -q origin main"],
+        ),
+    ],
+)
+def test_steps_keep_a_shell_block_and_a_quoted_text_whole(line: str, expected: list[str]) -> None:
+    assert steps(line, None) == expected
+
+
 def test_steps_mask_an_inline_script() -> None:
     assert steps("python3 - <<'EOF'\nprint(1); print(2)\nEOF\ngit status", None) == [
         "python3 - <<HEREDOC",
