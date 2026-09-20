@@ -50,7 +50,34 @@ _WRAPPER = re.compile(
     r"^\s*(?:(?:nohup|exec|setsid|timeout\s+\d+|pnpm exec|npx|\(|\w+=\S*\s|(?:\./)?node_modules/\.bin/)\s*)+"
 )
 _INLINE = ("<<HEREDOC", "<SCRIPT>")
-_NOT_A_STEP = {"echo", "sleep", "cd", "true", ":"}
+# A quoted text never splits a step, whatever operator it holds.
+_QUOTED = re.compile(r"'[^']*'" + r'|"(?:[^"\\]|\\.)*"', re.DOTALL)
+# A compound command is one step: an agent that polls in a loop performs one procedure.
+# ponytail: no nesting of the same keyword; an inner `done` ends the outer loop.
+_BLOCK = re.compile(
+    r"\b(?:while|until|for)\b.*?\bdo\b.*?\bdone\b|\bif\b.*?\bthen\b.*?\bfi\b|\bcase\b.*?\besac\b",
+    re.DOTALL,
+)
+# `node node_modules/vite/bin/vite.js` and `pnpm exec vite` start the same program.
+_VITE_JS = re.compile(r"\bnode\s+\S*vite/bin/vite\.js\b")
+_ASSIGNMENT = re.compile(r"(?:export\s+)?\w+=\S*")
+_NOT_A_STEP = {
+    "echo",
+    "sleep",
+    "cd",
+    "true",
+    ":",
+    "do",
+    "done",
+    "then",
+    "else",
+    "fi",
+    "esac",
+    "}",
+    "{",
+    "break",
+    "continue",
+}
 # A free prefilter. The model judges only the corrections that reach the threshold (5.1 rule 3).
 _CORRECTION = re.compile(
     r"^\s*(no\b|nope\b|don'?t\b|do not\b|stop\b|wrong\b|never\b|that'?s (?:wrong|not)\b"
@@ -76,11 +103,22 @@ def steps(command_line: str, cwd: str | None) -> list[str]:
     """
     # ponytail: a regex split, so an operator inside quotes also splits; use a shell
     # parser if a real procedure needs it.
-    found: list[str] = []
+    kept: list[str] = []
+
+    def protect(match: re.Match[str]) -> str:
+        kept.append(match.group(0))
+        return f"\x00{len(kept) - 1}\x00"
+
     masked = _SCRIPT.sub("<SCRIPT>", _HEREDOC.sub("<<HEREDOC", command_line))
+    masked = _BLOCK.sub(protect, _QUOTED.sub(protect, masked))
+    found: list[str] = []
     for raw in _SPLIT.split(masked):
-        step = _WRAPPER.sub("", _TRIM.sub("", raw)).strip()
-        if step and step.split()[0] not in _NOT_A_STEP:
+        step = _VITE_JS.sub("vite", _WRAPPER.sub("", _TRIM.sub("", raw))).strip()
+        while "\x00" in step:  # a quoted text inside a block: one more level to restore
+            step = re.sub(
+                r"\x00(\d+)\x00", lambda m: " ".join(kept[int(m.group(1))].split()), step
+            )
+        if step and step.split()[0] not in _NOT_A_STEP and not _ASSIGNMENT.fullmatch(step):
             found.append(normalise(step, cwd))
     return found
 
